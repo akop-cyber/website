@@ -1,0 +1,7 @@
+gradio
+huggingface_hub
+sentence-transformers
+faiss-cpu
+numpy
+PyPDF2>=3.0.0
+
