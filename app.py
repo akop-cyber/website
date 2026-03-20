@@ -15,7 +15,7 @@ app = FastAPI()
 # ── CORS: allow your website's domain to call this API ──────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["C:/Users/Aarav/OneDrive/Desktop/notes/MY_Wesite/index.html"],          # 🔒 Replace "*" with your website URL in production
+    allow_origins=["https://akop-cyber.github.io"],          # 🔒 Replace "*" with your website URL in production
     allow_methods=["*"],
     allow_headers=["*"],
 )
