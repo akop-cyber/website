@@ -4,3 +4,4 @@ huggingface-hub
 python-multipart
 requests
 numpy
+PyPDF2
