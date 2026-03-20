@@ -6,3 +6,5 @@ requests
 numpy
 PyPDF2
 faiss-cpu
+pydantic
+python-dotenv
