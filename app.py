@@ -114,7 +114,6 @@ async def chat(req: ChatRequest):
                     if text:
                         yield f"data: {text}\n\n"
                 yield "data: [DONE]\n\n"
-                break
                 return
             except Exception as e:
                 logger.warning(f"Streaming failed for {model} via {provider}: {e}")
@@ -122,6 +121,7 @@ async def chat(req: ChatRequest):
 
         yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
         yield "data: [DONE]\n\n"
+            
 
     return StreamingResponse(token_stream(), media_type="text/event-stream")  
 
