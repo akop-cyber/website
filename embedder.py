@@ -14,10 +14,3 @@ class Embedder:
     def embed_q(self, query):
         v = self.client.feature_extraction(query, model=self.model)
         return np.array(v).flatten().tolist()
-        """Embed a list of text chunks — same interface as before."""
-        return self._get_embeddings(chunks)
- 
-    def embed_q(self, query):
-        """Embed a single query string — same interface as before."""
-        result = self._get_embeddings([query])
-        return result[0]   # unwrap the single vector
