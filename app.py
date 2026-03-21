@@ -37,21 +37,7 @@ MODELS = [
     ("HuggingFaceH4/zephyr-7b-beta", None),
 ]
 
-def get_client():
-    """Try each model/provider combo and return the first working client."""
-    for model, provider in MODELS:
-        try:
-            kwargs = {"token": os.environ["HF_TOKEN"]}
-            if provider:
-                kwargs["provider"] = provider
-            client = InferenceClient(model, **kwargs)
-          
-            logger.info(f"Using model: {model} via {provider or 'default'}")
-            return client, model
-        except Exception as e:
-            logger.warning(f"Model {model} via {provider} failed: {e}")
-            continue
-    raise RuntimeError("No working model found. Check your HuggingFace token and providers.")
+
 
 
 sessions: dict = {}
@@ -93,7 +79,7 @@ class ChatRequest(BaseModel):
 async def chat(req: ChatRequest):
     session = sessions.get(req.session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found. Please upload a PDF first.")
+        raise HTTPException(status_code=404, detail="Session not found.")
 
     store    = session["store"]
     embedder = session["embedder"]
@@ -108,39 +94,36 @@ async def chat(req: ChatRequest):
     system_prompt = (
         "You are a research assistant. Answer questions using only the provided context. "
         "If the answer isn't there, say you don't know. Do not hallucinate."
+        "Answer in a well structured manner like using bullet points, numbers etc."
     )
 
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(req.history)
     messages.append({"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {req.message}"})
 
-    def token_stream():
-        
+    def token_stream():                         
         for model, provider in MODELS:
             try:
                 kwargs = {"token": os.environ["HF_TOKEN"]}
                 if provider:
                     kwargs["provider"] = provider
                 client = InferenceClient(model, **kwargs)
-
                 logger.info(f"Streaming with: {model} via {provider or 'default'}")
                 for token in client.chat_completion(messages, max_tokens=512, stream=True):
                     text = token.choices[0].delta.content
                     if text:
                         yield f"data: {text}\n\n"
                 yield "data: [DONE]\n\n"
-                return   
-
+                yield f"data: \n\n---\n*Model: {model}*\n\n"
+                return
             except Exception as e:
                 logger.warning(f"Streaming failed for {model} via {provider}: {e}")
                 continue
 
-       
         yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
         yield "data: [DONE]\n\n"
 
-    return StreamingResponse(token_stream(), media_type="text/event-stream")
-
+    return StreamingResponse(token_stream(), media_type="text/event-stream")  
 
 
 if __name__ == "__main__":
