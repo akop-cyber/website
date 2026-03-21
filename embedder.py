@@ -1,29 +1,19 @@
 import os
-import requests
- 
+import numpy as np
+from huggingface_hub import InferenceClient
+
 class Embedder:
-    """
-    Converts text into vectors using HuggingFace Inference API.
-    No local model loading — zero heavy dependencies.
-    """
     def __init__(self):
-        self.api_url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
-        self.headers = {"Authorization": f"Bearer {os.environ['HF_TOKEN']}"}
- 
-    def _get_embeddings(self, texts):
-        """Call HuggingFace API and return list of vectors."""
-        response = requests.post(
-            self.api_url,
-            headers=self.headers,
-            json={
-                "inputs": texts,
-                "options": {"wait_for_model": True}  # wait if model is cold
-            }
-        )
-        response.raise_for_status()
-        return response.json()
- 
+        self.client = InferenceClient(token=os.environ["HF_TOKEN"])
+        self.model = "BAAI/bge-small-en-v1.5"
+
     def embed(self, chunks):
+        vectors = [self.client.feature_extraction(text, model=self.model) for text in chunks]
+        return [np.array(v).flatten().tolist() for v in vectors]
+
+    def embed_q(self, query):
+        v = self.client.feature_extraction(query, model=self.model)
+        return np.array(v).flatten().tolist()
         """Embed a list of text chunks — same interface as before."""
         return self._get_embeddings(chunks)
  
