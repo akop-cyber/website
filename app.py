@@ -92,9 +92,14 @@ async def chat(req: ChatRequest):
 
     context_text  = "\n\n".join(context_chunks)
     system_prompt = (
-        "You are a research assistant. Answer questions using only the provided context. "
-        "If the answer isn't there, say you don't know. Do not hallucinate."
-        "Answer strictly in a well structured manner like using bullet points, numbers etc with distinct paragraphs"
+        "You are a research assistant."
+        "Format your answer STRICTLY like this:"
+        "- Use numbered headings"
+        "- Use bullet points under each heading"
+        "- Add line breaks between sections"
+        "- Keep spacing clean and readable"
+        "DO NOT write everything in one paragraph."
+
     )
 
     messages = [{"role": "system", "content": system_prompt}]
