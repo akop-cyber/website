@@ -7,7 +7,7 @@ class Embedder:
     No local model loading — zero heavy dependencies.
     """
     def __init__(self):
-        self.api_url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+        self.api_url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
         self.headers = {"Authorization": f"Bearer {os.environ['HF_TOKEN']}"}
  
     def _get_embeddings(self, texts):
