@@ -94,7 +94,7 @@ async def chat(req: ChatRequest):
     system_prompt = (
         "You are a research assistant. Answer questions using only the provided context. "
         "If the answer isn't there, say you don't know. Do not hallucinate."
-        "Answer in a well structured manner like using bullet points, numbers etc."
+        "Answer strictly in a well structured manner like using bullet points, numbers etc with distinct paragraphs"
     )
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -114,13 +114,14 @@ async def chat(req: ChatRequest):
                     if text:
                         yield f"data: {text}\n\n"
                 yield "data: [DONE]\n\n"
-                yield f"data: \n\n---\n*Model: {model}*\n\n"
+                
                 return
             except Exception as e:
                 logger.warning(f"Streaming failed for {model} via {provider}: {e}")
+                yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
                 continue
 
-        yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
+        
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(token_stream(), media_type="text/event-stream")  
