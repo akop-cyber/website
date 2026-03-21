@@ -1,8 +1,9 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from huggingface_hub import InferenceClient
-import tempfile, os, uuid
+import tempfile, os, uuid, logging
 
 from loader import Loader
 from chunker import Chunker
@@ -12,15 +13,45 @@ from retriever import Retriever
 
 app = FastAPI()
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-client = InferenceClient("meta-llama/Llama-3.2-3B-Instruct")
+
+MODELS = [
+    ("meta-llama/Llama-3.2-3B-Instruct", "groq"),
+    ("meta-llama/Llama-3.2-3B-Instruct", "novita"),
+    ("meta-llama/Llama-3.2-3B-Instruct", "together"),
+    ("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", "novita"),
+    ("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", "together"),
+    ("Qwen/Qwen2.5-72B-Instruct", "novita"),
+    ("Qwen/Qwen2.5-72B-Instruct", "together"),
+    ("mistralai/Mistral-7B-Instruct-v0.3", "novita"),
+    ("mistralai/Mistral-7B-Instruct-v0.3", "together"),
+    ("HuggingFaceH4/zephyr-7b-beta", None),
+]
+
+def get_client():
+    """Try each model/provider combo and return the first working client."""
+    for model, provider in MODELS:
+        try:
+            kwargs = {"token": os.environ["HF_TOKEN"]}
+            if provider:
+                kwargs["provider"] = provider
+            client = InferenceClient(model, **kwargs)
+          
+            logger.info(f"Using model: {model} via {provider or 'default'}")
+            return client, model
+        except Exception as e:
+            logger.warning(f"Model {model} via {provider} failed: {e}")
+            continue
+    raise RuntimeError("No working model found. Check your HuggingFace token and providers.")
 
 
 sessions: dict = {}
@@ -29,26 +60,23 @@ sessions: dict = {}
 
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
-    """receives a PDF, builds the vector index and returns a session_id."""
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
-
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
 
     try:
-        text    = Loader(tmp_path).load()
-        chunks  = Chunker().chunker(text)
+        text     = Loader(tmp_path).load()
+        chunks   = Chunker().chunker(text)
         embedder = Embedder()
         vectors  = embedder.embed(chunks)
         store    = VectorStorage(dimension=len(vectors[0]))
         store.add(vectors, chunks)
     finally:
-        os.unlink(tmp_path)         
+        os.unlink(tmp_path)
 
-    
     session_id = str(uuid.uuid4())
     sessions[session_id] = {"store": store, "embedder": embedder}
 
@@ -59,13 +87,10 @@ async def upload_pdf(file: UploadFile = File(...)):
 class ChatRequest(BaseModel):
     session_id: str
     message:    str
-    history:    list  
-
-from fastapi.responses import StreamingResponse
+    history:    list
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    """retrieves context and streams the LLM response back."""
     session = sessions.get(req.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found. Please upload a PDF first.")
@@ -73,7 +98,7 @@ async def chat(req: ChatRequest):
     store    = session["store"]
     embedder = session["embedder"]
 
-    retriever     = Retriever(store, embedder, k=3)
+    retriever      = Retriever(store, embedder, k=3)
     context_chunks = retriever.retrieve(req.message)
 
     if not context_chunks:
@@ -81,7 +106,7 @@ async def chat(req: ChatRequest):
 
     context_text  = "\n\n".join(context_chunks)
     system_prompt = (
-        "You are a research assistant to help students to answer their queries from the context. Answer questions using only the provided context. "
+        "You are a research assistant. Answer questions using only the provided context. "
         "If the answer isn't there, say you don't know. Do not hallucinate."
     )
 
@@ -89,13 +114,29 @@ async def chat(req: ChatRequest):
     messages.extend(req.history)
     messages.append({"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {req.message}"})
 
-   
     def token_stream():
-        for token in client.chat_completion(messages, max_tokens=512, stream=True):
-            text = token.choices[0].delta.content
-            if text:
-                
-                yield f"data: {text}\n\n"
+        
+        for model, provider in MODELS:
+            try:
+                kwargs = {"token": os.environ["HF_TOKEN"]}
+                if provider:
+                    kwargs["provider"] = provider
+                client = InferenceClient(model, **kwargs)
+
+                logger.info(f"Streaming with: {model} via {provider or 'default'}")
+                for token in client.chat_completion(messages, max_tokens=512, stream=True):
+                    text = token.choices[0].delta.content
+                    if text:
+                        yield f"data: {text}\n\n"
+                yield "data: [DONE]\n\n"
+                return   
+
+            except Exception as e:
+                logger.warning(f"Streaming failed for {model} via {provider}: {e}")
+                continue
+
+       
+        yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(token_stream(), media_type="text/event-stream")
