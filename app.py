@@ -25,16 +25,16 @@ app.add_middleware(
 
 
 MODELS = [
-    ("meta-llama/Llama-3.2-3B-Instruct", "groq"),
-    ("meta-llama/Llama-3.2-3B-Instruct", "novita"),
-    ("meta-llama/Llama-3.2-3B-Instruct", "together"),
-    ("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", "novita"),
-    ("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", "together"),
-    ("Qwen/Qwen2.5-72B-Instruct", "novita"),
-    ("Qwen/Qwen2.5-72B-Instruct", "together"),
-    ("mistralai/Mistral-7B-Instruct-v0.3", "novita"),
-    ("mistralai/Mistral-7B-Instruct-v0.3", "together"),
-    ("HuggingFaceH4/zephyr-7b-beta", None),
+    ("Qwen/Qwen2.5-72B-Instruct"),
+    ("Qwen/Qwen2.5-72B-Instruct"),
+    ("meta-llama/Llama-3.2-3B-Instruct"),
+    ("meta-llama/Llama-3.2-3B-Instruct"),
+    ("meta-llama/Llama-3.2-3B-Instruct"),
+    ("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"),
+    ("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"),
+    ("mistralai/Mistral-7B-Instruct-v0.3"),
+    ("mistralai/Mistral-7B-Instruct-v0.3"),
+    ("HuggingFaceH4/zephyr-7b-beta"),
 ]
 
 
@@ -107,13 +107,12 @@ async def chat(req: ChatRequest):
     messages.append({"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {req.message}"})
 
     def token_stream():                         
-        for model, provider in MODELS:
+        for model in MODELS:
             try:
                 kwargs = {"token": os.environ["HF_TOKEN"]}
-                if provider:
-                    kwargs["provider"] = provider
+                
                 client = InferenceClient(model, **kwargs)
-                logger.info(f"Streaming with: {model} via {provider or 'default'}")
+                logger.info(f"Streaming with: {model}")
                 for token in client.chat_completion(messages, max_tokens=512, stream=True):
                     text = token.choices[0].delta.content
                     if text:
@@ -122,9 +121,10 @@ async def chat(req: ChatRequest):
                 return
             except Exception as e:
                 logger.warning(f"Streaming failed for {model} via {provider}: {e}")
+                yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
                 continue
 
-        yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
+        
         yield "data: [DONE]\n\n"
             
 
