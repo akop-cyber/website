@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+Ffrom fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -85,7 +85,7 @@ async def chat(req: ChatRequest):
     embedder = session["embedder"]
 
     retriever      = Retriever(store, embedder, k=3)
-    context_chunks = retriever.retrieve(req.message)
+    context_chunks = retriever.retrieve(req.message+"please answer in a well structured manner with well defined multiple seprated paragraphs")
 
     if not context_chunks:
         return {"response": "I couldn't find relevant information in the document."}
@@ -120,7 +120,7 @@ async def chat(req: ChatRequest):
                 yield "data: [DONE]\n\n"
                 return
             except Exception as e:
-                logger.warning(f"Streaming failed for {model} via {provider}: {e}")
+                logger.warning(f"Streaming failed for {model} : {e}")
                 yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
                 continue
 
