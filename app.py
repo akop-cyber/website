@@ -106,29 +106,29 @@ async def chat(req: ChatRequest):
     messages.append({"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {req.message}"})
 
     def token_stream():
-    for model in MODELS:
-        try:
-            client = InferenceClient(model, token=os.environ["HF_TOKEN"])
-            logger.info(f"Streaming with: {model}")
-            success = False
-            for token in client.chat_completion(messages, max_tokens=512, stream=True):
-                text = token.choices[0].delta.content
-                if text:
-                    success = True
-                    yield f"data: {text}\n\n"
-            yield "data: [DONE]\n\n"
-            return  
-        except Exception as e:
-            if success:
-                
+        for model in MODELS:
+            try:
+                client = InferenceClient(model, token=os.environ["HF_TOKEN"])
+                logger.info(f"Streaming with: {model}")
+                success = False
+                for token in client.chat_completion(messages, max_tokens=512, stream=True):
+                    text = token.choices[0].delta.content
+                    if text:
+                        success = True
+                        yield f"data: {text}\n\n"
                 yield "data: [DONE]\n\n"
-                return
-            logger.warning(f"Streaming failed for {model}: {e}")
-            continue  
+                return  
+            except Exception as e:
+                if success:
+                
+                    yield "data: [DONE]\n\n"
+                    return
+                logger.warning(f"Streaming failed for {model}: {e}")
+                continue  
 
     
-    yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
-    yield "data: [DONE]\n\n"
+        yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
+        yield "data: [DONE]\n\n"
             
 
     return StreamingResponse(token_stream(), media_type="text/event-stream")  
