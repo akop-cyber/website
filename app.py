@@ -85,47 +85,50 @@ async def chat(req: ChatRequest):
     embedder = session["embedder"]
 
     retriever      = Retriever(store, embedder, k=3)
-    context_chunks = retriever.retrieve(req.message+"please answer in a well structured manner with well defined multiple seprated paragraphs")
+    context_chunks = retriever.retrieve(req.message)
 
     if not context_chunks:
         return {"response": "I couldn't find relevant information in the document."}
 
     context_text  = "\n\n".join(context_chunks)
     system_prompt = (
-        "You are a research assistant."
-        "Format your answer STRICTLY like this:"
-        "- Use numbered headings"
-        "- Use bullet points under each heading"
-        "- Add line breaks between sections"
-        "- Keep spacing clean and readable"
+        "You are a research assistant.\n"
+        "Format your answer STRICTLY like this:\n"
+        "- Use numbered headings\n"
+        "- Use bullet points under each heading\n"
+        "- Add line breaks between sections\n"
+        "- Keep spacing clean and readable\n"
         "DO NOT write everything in one paragraph."
-
     )
 
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(req.history)
     messages.append({"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {req.message}"})
 
-    def token_stream():                         
-        for model in MODELS:
-            try:
-                kwargs = {"token": os.environ["HF_TOKEN"]}
+    def token_stream():
+    for model in MODELS:
+        try:
+            client = InferenceClient(model, token=os.environ["HF_TOKEN"])
+            logger.info(f"Streaming with: {model}")
+            success = False
+            for token in client.chat_completion(messages, max_tokens=512, stream=True):
+                text = token.choices[0].delta.content
+                if text:
+                    success = True
+                    yield f"data: {text}\n\n"
+            yield "data: [DONE]\n\n"
+            return  
+        except Exception as e:
+            if success:
                 
-                client = InferenceClient(model, **kwargs)
-                logger.info(f"Streaming with: {model}")
-                for token in client.chat_completion(messages, max_tokens=512, stream=True):
-                    text = token.choices[0].delta.content
-                    if text:
-                        yield f"data: {text}\n\n"
                 yield "data: [DONE]\n\n"
                 return
-            except Exception as e:
-                logger.warning(f"Streaming failed for {model} : {e}")
-                yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
-                continue
+            logger.warning(f"Streaming failed for {model}: {e}")
+            continue  
 
-        
-        yield "data: [DONE]\n\n"
+    
+    yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
+    yield "data: [DONE]\n\n"
             
 
     return StreamingResponse(token_stream(), media_type="text/event-stream")  
