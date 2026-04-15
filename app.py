@@ -44,14 +44,29 @@ sessions: dict = {}
 
 
 
+@app.post("/upload")
+async def upload_pdf(file: UploadFile = File(...)):
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
-text     = Loader("portfolio.pdf").load()
-chunks   = Chunker().chunker(text)
-embedder = Embedder()
-vectors  = embedder.embed(chunks)
-store    = VectorStorage(dimension=len(vectors[0]))
-store.add(vectors, chunks)
-   
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+
+    try:
+        text     = Loader(tmp_path).load()
+        chunks   = Chunker().chunker(text)
+        embedder = Embedder()
+        vectors  = embedder.embed(chunks)
+        store    = VectorStorage(dimension=len(vectors[0]))
+        store.add(vectors, chunks)
+    finally:
+        os.unlink(tmp_path)
+
+    session_id = str(uuid.uuid4())
+    sessions[session_id] = {"store": store, "embedder": embedder}
+
+    return {"session_id": session_id, "message": "PDF indexed. Ready to chat!"}
 
 
 
@@ -64,9 +79,7 @@ class ChatRequest(BaseModel):
 async def chat(req: ChatRequest):
     session = sessions.get(req.session_id)
     if not session:
-        sessions[req.session_id] = {"store": store, "embedder": embedder}
-        session = sessions[req.session_id]
-
+        raise HTTPException(status_code=404, detail="Session not found.")
 
     store    = session["store"]
     embedder = session["embedder"]
@@ -75,31 +88,19 @@ async def chat(req: ChatRequest):
     context_chunks = retriever.retrieve(req.message)
 
     if not context_chunks:
-        return {"response": "I only answer questions about Aarav and his work."}
+        return {"response": "I couldn't find relevant information in the document."}
 
     context_text  = "\n\n".join(context_chunks)
     system_prompt = (
-        "You are Aarav's AI assistant.\n"
-        "Your name is Zooba\n"
-        "Your job is to answer questions about Aarav Kumar Ranjan, his projects, skills, and interests using the provided context.\n"
-        "Rules:\n"
-        "- Only answer using the given context. Do not make up information.\n"
-        "- If the answer is not in the context, say: I only answer questions about Aarav and his work.\n"
-        "- Keep answers clear, simple, and confident.\n"
-        "- Do not use complex jargon unless necessary.\n"
-        "- Prefer explaining things in a way a beginner can understand.\n"
-        "Style:\n"
-        "- Speak in a calm, intelligent, and slightly friendly tone.\n"
-        "- Be concise but informative.\n"
-        "- When explaining projects, include:\n"
-        " • what it does\n"  
-        " • how it works (simple explanation)\n"  
-        " • why it is useful\n" 
-        "Do not generate fake achievements, skills, or experiences.\n" 
-        "Do not pretend to be Aarav himself.\n"
-        "If asked about projects, mention their names clearly.\n"
-        "Make Aarav appear as a thoughtful, skilled, and curious machine learning enthusiast who focuses on understanding and building real systems.\n"
+        "You are a research assistant.\n"
+        "Format your answer STRICTLY like this:\n"
+        "- Use numbered headings\n"
+        "- Use bullet points under each heading\n"
+        "- Add line breaks between sections\n"
+        "- Keep spacing clean and readable\n"
+        "DO NOT write everything in one paragraph."
     )
+
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(req.history)
     messages.append({"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {req.message}"})
@@ -126,7 +127,7 @@ async def chat(req: ChatRequest):
                 continue  
 
     
-        yield "data: Sorry, we are currently unavailable. Try again later.\n\n"
+        yield "data: Sorry, all models are currently unavailable. Try again later.\n\n"
         yield "data: [DONE]\n\n"
             
 
